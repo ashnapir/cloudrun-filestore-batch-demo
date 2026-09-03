@@ -1,0 +1,68 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: image-watermark-job
+  labels:
+    cloud.googleapis.com/location: ${REGION}
+spec:
+  template:
+    metadata:
+      annotations:
+        # Gen2 execution environment enables multi-volume mounts (NFS + GCS FUSE)
+        run.googleapis.com/execution-environment: gen2
+        # Direct VPC Egress: route NFS traffic directly into the internal VPC network
+        run.googleapis.com/network-interfaces: '[{"network": "${VPC_NETWORK}", "subnetwork": "${VPC_SUBNET}"}]'
+        run.googleapis.com/vpc-access-egress: all-traffic
+    spec:
+      taskCount: 10
+      parallelism: 10
+      template:
+        spec:
+          serviceAccountName: ${SERVICE_ACCOUNT_EMAIL}
+          containers:
+          - image: ${IMAGE_URI}
+            resources:
+              limits:
+                cpu: "1000m"
+                memory: "512Mi"
+            env:
+            - name: AUTO_SEED
+              value: "true"
+            - name: SEED_IMAGES
+              value: "30"
+            - name: GCS_INPUT_DIR
+              value: "/mnt/gcs/input"
+            - name: GCS_OUTPUT_DIR
+              value: "/mnt/gcs/output"
+            - name: NFS_SCRATCH_DIR
+              value: "/mnt/nfs/scratch"
+            volumeMounts:
+            # 1. GCS Input Bucket (GCS FUSE)
+            - name: gcs-input
+              mountPath: /mnt/gcs/input
+            # 2. GCS Output Bucket (GCS FUSE)
+            - name: gcs-output
+              mountPath: /mnt/gcs/output
+            # 3. Filestore NFS (Scratch Space)
+            - name: nfs-scratch
+              mountPath: /mnt/nfs/scratch
+          volumes:
+          # Ingestion Source: GCS FUSE CSI driver
+          - name: gcs-input
+            csi:
+              driver: gcsfuse.run.googleapis.com
+              readOnly: false
+              volumeAttributes:
+                bucketName: ${GCS_INPUT_BUCKET}
+          # Archival Destination: GCS FUSE CSI driver
+          - name: gcs-output
+            csi:
+              driver: gcsfuse.run.googleapis.com
+              readOnly: false
+              volumeAttributes:
+                bucketName: ${GCS_OUTPUT_BUCKET}
+          # High-IOPS Temporary Scratch: Google Cloud Filestore NFS
+          - name: nfs-scratch
+            nfs:
+              server: ${FILESTORE_IP}
+              path: /${FILESTORE_SHARE}
