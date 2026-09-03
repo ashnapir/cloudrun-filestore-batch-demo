@@ -100,7 +100,7 @@ graph TD
 ## Repository Structure
 
 ```
-filestore_cloudrun_demo/
+cloudrun-filestore-batch-demo/
 ├── app/
 │   ├── main.py          # Hybrid data pipeline worker logic & structured logging
 │   └── requirements.txt # Python dependencies (Pillow)
@@ -154,7 +154,7 @@ gcloud config set project "$PROJECT_ID"
 Clone this repository and run the provisioning script:
 
 ```bash
-cd filestore_cloudrun_demo
+cd cloudrun-filestore-batch-demo
 chmod +x setup.sh cleanup.sh
 ./setup.sh
 ```
