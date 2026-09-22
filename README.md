@@ -312,6 +312,105 @@ gcloud run jobs execute image-watermark-job \
     --project="${PROJECT_ID}"
 ```
 
+### Step 7: Monitor Progress, Verify Completion & View Modified Images
+
+Once the job is triggered, follow these steps to track execution progress, verify completion, and inspect the resulting watermarked images:
+
+#### 1. Track Progress & Check Completion Status
+
+* **Option A: Stream live execution progress in the terminal (Blocking):**
+  You can run the job with the `--wait` flag to stream real-time task progress and wait until all tasks complete:
+  ```bash
+  gcloud run jobs execute image-watermark-job \
+      --region="${REGION}" \
+      --project="${PROJECT_ID}" \
+      --wait
+  ```
+
+* **Option B: Monitor an asynchronous execution:**
+  If you executed without `--wait`, check the execution status:
+  ```bash
+  # List recent executions to get the execution ID
+  gcloud run jobs executions list \
+      --job=image-watermark-job \
+      --region="${REGION}" \
+      --project="${PROJECT_ID}"
+
+  # Describe execution to view task progress (e.g. 10 / 10 completed)
+  gcloud run jobs executions describe <EXECUTION_NAME> \
+      --region="${REGION}" \
+      --project="${PROJECT_ID}"
+  ```
+  > Look for: `✔ 10 tasks completed successfully` and `✔ Execution completed successfully`.
+
+* **Option C: Track in Cloud Console:**
+  Open the Cloud Run Jobs console to view the execution graph and individual task runtimes:
+  ```text
+  https://console.cloud.google.com/run/jobs/details/${REGION}/image-watermark-job/executions?project=${PROJECT_ID}
+  ```
+
+#### 2. Follow Pipeline Events in Cloud Logging
+
+Each container task streams structured JSON log entries detailing the latency of each phase (GCS FUSE fetch, Filestore NFS scratch processing, and GCS FUSE archival):
+
+```bash
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="image-watermark-job" AND jsonPayload.event="image_processed"' \
+    --project="${PROJECT_ID}" \
+    --limit=30 \
+    --format="table(timestamp,jsonPayload.task_index,jsonPayload.image,jsonPayload.fetch_from_gcs_ms,jsonPayload.filestore_scratch_proc_ms,jsonPayload.archive_to_gcs_ms,jsonPayload.total_duration_ms)"
+```
+
+#### 3. Verify Output Bucket & Inspect Modified Images
+
+Once all tasks reach completion, the watermarked JPEG images are available in `gs://${GCS_OUTPUT_BUCKET}/`.
+
+* **Count processed images (should match total input, e.g. 30):**
+  ```bash
+  gcloud storage ls "gs://${GCS_OUTPUT_BUCKET}/" | wc -l
+  ```
+
+* **List output image details and sizes:**
+  ```bash
+  gcloud storage ls --long "gs://${GCS_OUTPUT_BUCKET}/"
+  ```
+
+* **Download and inspect a sample watermarked image locally:**
+  ```bash
+  # Download sample_001.jpg
+  gcloud storage cp "gs://${GCS_OUTPUT_BUCKET}/sample_001.jpg" ./sample_001_watermarked.jpg
+
+  # Open with your local image viewer (Linux: xdg-open, macOS: open)
+  xdg-open ./sample_001_watermarked.jpg 2>/dev/null || open ./sample_001_watermarked.jpg 2>/dev/null
+  ```
+
+* **View in Cloud Storage Console:**
+  Browse, preview, and download images directly in the GCP console:
+  ```text
+  https://console.cloud.google.com/storage/browser/${GCS_OUTPUT_BUCKET}?project=${PROJECT_ID}
+  ```
+
+---
+
+## Presentation & Screenshot Walkthrough Guide
+
+| # | Moment to Capture | Location | Key Visual Indicator |
+|---|---|---|---|
+| **1** | **Filestore Dashboard** | Cloud Console > Filestore > Instances | Show internal IP (`10.x.x.x`) and share (`/share1`) mounted as scratch space. |
+| **2** | **Multi-Volume Mounts UI** | Cloud Console > Cloud Run > Jobs > `image-watermark-job` > Configuration | Volumes tab showing **3 volumes**: GCS Input (`/mnt/gcs/input`), GCS Output (`/mnt/gcs/output`), and NFS Scratch (`/mnt/nfs/scratch`). |
+| **3** | **Parallel Execution Graph** | Cloud Console > Cloud Run > Jobs > Executions | 10 tasks running concurrently in parallel. |
+| **4** | **Structured Cloud Logging** | Cloud Console > Logging > Log Explorer | Query JSON metrics demonstrating fetch, Filestore scratch processing, and GCS archival per task. |
+| **5** | **Output Archival Validation** | Cloud Console > Cloud Storage > `${PROJECT_ID}-watermark-output` | Verify watermarked JPEG outputs preserved permanently in GCS. |
+
+---
+
+## Clean Up
+
+To tear down all resources and avoid incurring charges:
+
+```bash
+./cleanup.sh
+```
+
 ---
 
 ## Troubleshooting & Common Failure Points
@@ -363,33 +462,3 @@ gcloud run jobs execute image-watermark-job \
   Direct VPC Egress assigns an internal IP from the specified subnet to each concurrent task instance. If running 10 parallel tasks, at least 10 free IPs are needed in the subnet.
 * **Resolution:**
   Ensure the target subnet has sufficient IP address space (e.g. `/28` provides 16 IP addresses, with ~11 usable by GCP instances).
-
----
-
-## Presentation & Screenshot Walkthrough Guide
-
-| # | Moment to Capture | Location | Key Visual Indicator |
-|---|---|---|---|
-| **1** | **Filestore Dashboard** | Cloud Console > Filestore > Instances | Show internal IP (`10.x.x.x`) and share (`/share1`) mounted as scratch space. |
-| **2** | **Multi-Volume Mounts UI** | Cloud Console > Cloud Run > Jobs > `image-watermark-job` > Configuration | Volumes tab showing **3 volumes**: GCS Input (`/mnt/gcs/input`), GCS Output (`/mnt/gcs/output`), and NFS Scratch (`/mnt/nfs/scratch`). |
-| **3** | **Parallel Execution Graph** | Cloud Console > Cloud Run > Jobs > Executions | 10 tasks running concurrently in parallel. |
-| **4** | **Structured Cloud Logging** | Cloud Console > Logging > Log Explorer | Query JSON metrics demonstrating fetch, Filestore scratch processing, and GCS archival per task. |
-| **5** | **Output Archival Validation** | Cloud Console > Cloud Storage > `${PROJECT_ID}-watermark-output` | Verify watermarked JPEG outputs preserved permanently in GCS. |
-
-### Querying Structured Logs in Cloud Logging
-
-```bash
-gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="image-watermark-job"' \
-    --limit=50 \
-    --format="table(timestamp,jsonPayload.task_index,jsonPayload.event,jsonPayload.image,jsonPayload.fetch_from_gcs_ms,jsonPayload.filestore_scratch_proc_ms,jsonPayload.archive_to_gcs_ms)"
-```
-
----
-
-## Clean Up
-
-To tear down all resources and avoid incurring charges:
-
-```bash
-./cleanup.sh
-```
