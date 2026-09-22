@@ -76,6 +76,8 @@ graph TD
 ```
 
 1. **Ingestion Phase:** Raw image assets are uploaded to the primary source-of-truth GCS Input Bucket (`gs://${PROJECT_ID}-watermark-input`).
+   > [!NOTE]
+   > If you do not upload your own test images to the input bucket, the pipeline's auto-seed mechanism (`AUTO_SEED=true`) automatically generates 30 sample test images in the input bucket so you can test the pipeline immediately.
 2. **Initialization & Multi-Volume Mounting:** The Cloud Run Job initializes with multi-volume mounts:
    * **GCS FUSE Mounting:** Mounts input bucket to `/mnt/gcs/input` and output bucket to `/mnt/gcs/output`.
    * **Filestore NFS Mounting:** Mounts Filestore instance to `/mnt/nfs/scratch`.
@@ -182,7 +184,7 @@ chmod +x setup.sh cleanup.sh
 4. Creating a dedicated Service Account, waiting for IAM replication, and binding `roles/storage.objectUser` permissions to both buckets.
 5. Building the container image via Cloud Build and pushing to Artifact Registry.
 6. Deploying the Cloud Run Job with **Multi-Volume Mounting** (GCS Input + GCS Output + Filestore NFS Scratch) and **Direct VPC Egress**.
-7. Triggering job execution with 10 parallel tasks and auto-seeding sample input images.
+7. Triggering job execution with 10 parallel tasks. (Note: If no images are found in the input bucket, the script automatically seeds 30 sample test images into `gs://${GCS_INPUT_BUCKET}` so the pipeline can be tested immediately).
 
 ---
 
@@ -201,6 +203,11 @@ gcloud storage buckets create "gs://${GCS_OUTPUT_BUCKET}" \
     --location="${REGION}" \
     --uniform-bucket-level-access
 ```
+
+> [!TIP]
+> **Uploading Your Own Images vs. Automatic Seeding:**
+> - **Upload your own images:** You can copy any number of JPEG/PNG images into `gs://${GCS_INPUT_BUCKET}/` before running the job (e.g., `gcloud storage cp /path/to/*.jpg gs://${GCS_INPUT_BUCKET}/`).
+> - **Automatic generation:** If you don't upload your own images, the batch worker automatically generates 30 colorful sample images in `gs://${GCS_INPUT_BUCKET}/` on its first run (`AUTO_SEED=true`).
 
 ### Step 2: Create Filestore NFS Instance
 
