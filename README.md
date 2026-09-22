@@ -133,6 +133,14 @@ gcloud services enable \
 
 ### 2. Environment Variables
 
+Set the configuration variables for your Google Cloud project. 
+
+> [!IMPORTANT]
+> **VPC Network & Subnet Requirements:**
+> - If your project does not have the `default` VPC network, set `VPC_NETWORK` and `VPC_SUBNET` to your existing VPC and subnet.
+> - The subnet specified in `VPC_SUBNET` **must reside in the same region** as `REGION` (e.g., `us-central1`).
+> - Cloud Run Direct VPC Egress allocates a private IP address per concurrent task instance. Ensure the subnet has sufficient available IPs (at least 10 available IPs for 10 parallel tasks; a `/28` or larger subnet is recommended).
+
 ```bash
 export PROJECT_ID="your-gcp-project-id"
 export REGION="us-central1"
@@ -141,6 +149,8 @@ export GCS_INPUT_BUCKET="${PROJECT_ID}-watermark-input"
 export GCS_OUTPUT_BUCKET="${PROJECT_ID}-watermark-output"
 export FILESTORE_INSTANCE="demo-nfs"
 export FILESTORE_SHARE="share1"
+
+# Network configuration: set to your custom VPC/subnet (or 'default')
 export VPC_NETWORK="your-vpc-name"
 export VPC_SUBNET="your-subnet-name"
 
@@ -151,12 +161,17 @@ gcloud config set project "$PROJECT_ID"
 
 ## Quickstart (Automated Deployment)
 
-Clone this repository and run the provisioning script:
+Clone this repository, configure your environment variables (especially `VPC_NETWORK` and `VPC_SUBNET` if not using `default`), and run the provisioning script:
 
 ```bash
 git clone <repository-url>
 cd cloudrun-filestore-batch-demo
 chmod +x setup.sh cleanup.sh
+
+# Optional: override default network and subnet if your project uses custom VPCs
+# export VPC_NETWORK="your-vpc"
+# export VPC_SUBNET="your-subnet-in-us-central1"
+
 ./setup.sh
 ```
 
@@ -164,7 +179,7 @@ chmod +x setup.sh cleanup.sh
 1. Enabling required Google Cloud APIs.
 2. Creating GCS Input and Output buckets with uniform bucket-level access.
 3. Provisioning the Filestore NFS instance (1TB `BASIC_HDD`).
-4. Creating a dedicated Service Account and binding `roles/storage.objectUser` permissions.
+4. Creating a dedicated Service Account, waiting for IAM replication, and binding `roles/storage.objectUser` permissions to both buckets.
 5. Building the container image via Cloud Build and pushing to Artifact Registry.
 6. Deploying the Cloud Run Job with **Multi-Volume Mounting** (GCS Input + GCS Output + Filestore NFS Scratch) and **Direct VPC Egress**.
 7. Triggering job execution with 10 parallel tasks and auto-seeding sample input images.
@@ -176,32 +191,56 @@ chmod +x setup.sh cleanup.sh
 ### Step 1: Create GCS Input & Output Buckets
 
 ```bash
-gcloud storage buckets create "gs://${GCS_INPUT_BUCKET}" --location="${REGION}" --uniform-bucket-level-access
-gcloud storage buckets create "gs://${GCS_OUTPUT_BUCKET}" --location="${REGION}" --uniform-bucket-level-access
+gcloud storage buckets create "gs://${GCS_INPUT_BUCKET}" \
+    --project="${PROJECT_ID}" \
+    --location="${REGION}" \
+    --uniform-bucket-level-access
+
+gcloud storage buckets create "gs://${GCS_OUTPUT_BUCKET}" \
+    --project="${PROJECT_ID}" \
+    --location="${REGION}" \
+    --uniform-bucket-level-access
 ```
 
 ### Step 2: Create Filestore NFS Instance
 
+> [!NOTE]
+> The Filestore instance and the Cloud Run Direct VPC Egress subnet must belong to the same VPC network (`${VPC_NETWORK}`).
+
 ```bash
 gcloud filestore instances create "${FILESTORE_INSTANCE}" \
+    --project="${PROJECT_ID}" \
     --zone="${ZONE}" \
     --tier=BASIC_HDD \
     --file-share=name="${FILESTORE_SHARE}",capacity=1TB \
     --network=name="${VPC_NETWORK}"
 
 export FILESTORE_IP=$(gcloud filestore instances describe "${FILESTORE_INSTANCE}" \
+    --project="${PROJECT_ID}" \
     --zone="${ZONE}" \
     --format="value(networks.ipAddresses[0])")
 ```
 
-### Step 3: Configure Service Account
+### Step 3: Configure Service Account & IAM Permissions
+
+> [!IMPORTANT]
+> **IAM Eventual Consistency Delay:**
+> When creating a new service account, Google Cloud IAM requires 5–10 seconds to propagate globally. Attempting to add bucket IAM policy bindings immediately after creation can result in:
+> `Service account ... does not exist.`
+> A `sleep 10` pause is included below to ensure the service account is recognized by Cloud Storage before binding the role.
 
 ```bash
+# 1. Create the Service Account
 gcloud iam service-accounts create watermark-job-sa \
+    --project="${PROJECT_ID}" \
     --display-name="Cloud Run Image Watermarking Worker SA"
 
 export SA_EMAIL="watermark-job-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 
+# 2. Wait for IAM propagation to complete
+sleep 10
+
+# 3. Grant Storage Object User on both Input and Output buckets
 gcloud storage buckets add-iam-policy-binding "gs://${GCS_INPUT_BUCKET}" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="roles/storage.objectUser"
@@ -209,27 +248,43 @@ gcloud storage buckets add-iam-policy-binding "gs://${GCS_INPUT_BUCKET}" \
 gcloud storage buckets add-iam-policy-binding "gs://${GCS_OUTPUT_BUCKET}" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="roles/storage.objectUser"
+
+# 4. Verify bindings are present on both buckets
+gcloud storage buckets get-iam-policy "gs://${GCS_INPUT_BUCKET}" --filter="bindings.members:${SA_EMAIL}"
+gcloud storage buckets get-iam-policy "gs://${GCS_OUTPUT_BUCKET}" --filter="bindings.members:${SA_EMAIL}"
 ```
 
 ### Step 4: Build Container Image
 
 ```bash
 gcloud artifacts repositories create watermark-repo \
+    --project="${PROJECT_ID}" \
     --repository-format=docker \
-    --location="${REGION}"
+    --location="${REGION}" \
+    --description="Docker repository for Cloud Run Filestore demo"
 
 export IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/watermark-repo/watermark-worker:latest"
-gcloud builds submit --tag "${IMAGE_URI}" .
+gcloud builds submit --project="${PROJECT_ID}" --tag "${IMAGE_URI}" .
 ```
 
 ### Step 5: Deploy Cloud Run Job with Multi-Volume Mounts
 
+Deploy the Cloud Run Job with:
+- **Direct VPC Egress:** Configured with `--network`, `--subnet`, and `--vpc-egress=all-traffic` to reach the private Filestore IP.
+- **Multi-Volume Mounts:**
+  - `gcs-input`: GCS FUSE mount to `/mnt/gcs/input`
+  - `gcs-output`: GCS FUSE mount to `/mnt/gcs/output`
+  - `nfs-scratch`: Filestore NFS mount to `/mnt/nfs/scratch`
+
 ```bash
 gcloud run jobs deploy image-watermark-job \
+    --project="${PROJECT_ID}" \
     --image="${IMAGE_URI}" \
     --region="${REGION}" \
     --service-account="${SA_EMAIL}" \
     --tasks=10 \
+    --max-retries=1 \
+    --task-timeout=10m \
     --cpu=1 \
     --memory=512Mi \
     --network="${VPC_NETWORK}" \
@@ -248,8 +303,62 @@ gcloud run jobs deploy image-watermark-job \
 ### Step 6: Execute Parallel Job
 
 ```bash
-gcloud run jobs execute image-watermark-job --region="${REGION}"
+gcloud run jobs execute image-watermark-job \
+    --region="${REGION}" \
+    --project="${PROJECT_ID}"
 ```
+
+---
+
+## Troubleshooting & Common Failure Points
+
+### 1. Volume Mount Failure: `Permission 'storage.objects.list' denied`
+* **Symptom:**
+  Tasks fail immediately with exit code `255` or `1`:
+  ```text
+  terminated: Application failed to run: volume (type: gcs, name: gcs-input): mount operation failed
+  Error: mountWithStorageHandle: fs.NewServer: ... storageLayout call failed: ... PermissionDenied desc = ... does not have storage.objects.list access
+  ```
+* **Cause:**
+  The Cloud Run service account was not granted `roles/storage.objectUser` on the input bucket, typically because `add-iam-policy-binding` was executed immediately after service account creation before IAM replication finished.
+* **Resolution:**
+  Re-apply the binding to the bucket and re-run the job:
+  ```bash
+  gcloud storage buckets add-iam-policy-binding "gs://${GCS_INPUT_BUCKET}" \
+      --member="serviceAccount:${SA_EMAIL}" \
+      --role="roles/storage.objectUser"
+  gcloud run jobs execute image-watermark-job --region="${REGION}" --project="${PROJECT_ID}"
+  ```
+
+### 2. VPC Subnetwork Mismatch or Missing Network
+* **Symptom:**
+  Job deployment fails with: `The specified subnetwork 'default' does not exist in region 'us-central1'`.
+* **Cause:**
+  The project does not have a default auto-mode VPC network or uses custom subnets.
+* **Resolution:**
+  Specify your existing VPC and a subnetwork that is located in `${REGION}`:
+  ```bash
+  export VPC_NETWORK="<your-vpc>"
+  export VPC_SUBNET="<your-subnet-in-selected-region>"
+  ```
+
+### 3. NFS Connectivity or Timeout
+* **Symptom:**
+  Tasks hang during initialization or log connection timeout errors when accessing `/mnt/nfs/scratch`.
+* **Cause:**
+  - Filestore instance and Cloud Run Job are deployed to different VPC networks.
+  - Custom VPC firewall rules block egress/ingress traffic on NFS port `2049`.
+* **Resolution:**
+  - Ensure the Filestore instance is created on the same `${VPC_NETWORK}` as Cloud Run.
+  - If using strict firewall policies in a custom VPC, ensure traffic on TCP port `2049` (NFS) and TCP port `111` (RPC) is permitted between the Cloud Run subnet and the Filestore IP.
+
+### 4. Subnet IP Exhaustion with High Task Counts
+* **Symptom:**
+  Tasks fail with network allocation errors during execution.
+* **Cause:**
+  Direct VPC Egress assigns an internal IP from the specified subnet to each concurrent task instance. If running 10 parallel tasks, at least 10 free IPs are needed in the subnet.
+* **Resolution:**
+  Ensure the target subnet has sufficient IP address space (e.g. `/28` provides 16 IP addresses, with ~11 usable by GCP instances).
 
 ---
 

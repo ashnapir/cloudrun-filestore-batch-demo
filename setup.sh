@@ -129,17 +129,19 @@ if ! gcloud iam service-accounts describe "${SA_EMAIL}" --project="${PROJECT_ID}
     gcloud iam service-accounts create "${SA_NAME}" \
         --display-name="Cloud Run Image Watermarking Worker SA" \
         --project="${PROJECT_ID}"
+    log_info "Waiting 10s for Service Account IAM propagation..."
+    sleep 10
 fi
 
 # Grant least privilege: Storage Object User on input and output buckets only
 log_info "Granting Storage Object User permissions on buckets..."
 gcloud storage buckets add-iam-policy-binding "gs://${GCS_INPUT_BUCKET}" \
     --member="serviceAccount:${SA_EMAIL}" \
-    --role="roles/storage.objectUser" --quiet >/dev/null
+    --role="roles/storage.objectUser" --quiet
 
 gcloud storage buckets add-iam-policy-binding "gs://${GCS_OUTPUT_BUCKET}" \
     --member="serviceAccount:${SA_EMAIL}" \
-    --role="roles/storage.objectUser" --quiet >/dev/null
+    --role="roles/storage.objectUser" --quiet
 log_success "Service Account configured: ${SA_EMAIL}"
 
 # ------------------------------------------------------------------------------
