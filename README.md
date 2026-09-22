@@ -141,8 +141,8 @@ export GCS_INPUT_BUCKET="${PROJECT_ID}-watermark-input"
 export GCS_OUTPUT_BUCKET="${PROJECT_ID}-watermark-output"
 export FILESTORE_INSTANCE="demo-nfs"
 export FILESTORE_SHARE="share1"
-export VPC_NETWORK="default"
-export VPC_SUBNET="default"
+export VPC_NETWORK="your-vpc-name"
+export VPC_SUBNET="your-subnet-name"
 
 gcloud config set project "$PROJECT_ID"
 ```
@@ -154,6 +154,7 @@ gcloud config set project "$PROJECT_ID"
 Clone this repository and run the provisioning script:
 
 ```bash
+git clone <repository-url>
 cd cloudrun-filestore-batch-demo
 chmod +x setup.sh cleanup.sh
 ./setup.sh
