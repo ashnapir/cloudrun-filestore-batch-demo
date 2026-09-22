@@ -257,8 +257,8 @@ gcloud storage buckets add-iam-policy-binding "gs://${GCS_OUTPUT_BUCKET}" \
     --role="roles/storage.objectUser"
 
 # 4. Verify bindings are present on both buckets
-gcloud storage buckets get-iam-policy "gs://${GCS_INPUT_BUCKET}" --filter="bindings.members:${SA_EMAIL}"
-gcloud storage buckets get-iam-policy "gs://${GCS_OUTPUT_BUCKET}" --filter="bindings.members:${SA_EMAIL}"
+gcloud storage buckets get-iam-policy "gs://${GCS_INPUT_BUCKET}"
+gcloud storage buckets get-iam-policy "gs://${GCS_OUTPUT_BUCKET}"
 ```
 
 ### Step 4: Build Container Image
