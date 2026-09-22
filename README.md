@@ -334,10 +334,7 @@ gcloud run jobs deploy image-watermark-job \
   > Look for: `✔ 10 tasks completed successfully` and `✔ Execution completed successfully`.
 
 * **Option C: Track in Cloud Console:**
-  Open the Cloud Run Jobs console to view the execution graph and individual task runtimes:
-  ```text
-  https://console.cloud.google.com/run/jobs/details/${REGION}/image-watermark-job/executions?project=${PROJECT_ID}
-  ```
+  Navigate to **Cloud Console > Cloud Run > Jobs > Executions** (select `image-watermark-job`) to view the execution graph and individual task runtimes.
 
 #### 2. Verify Output Bucket & Inspect Modified Images
 
@@ -349,10 +346,7 @@ Once all tasks reach completion, the watermarked JPEG images are available in `g
   ```
 
 * **View in Cloud Storage Console:**
-  Browse, preview, and download images directly in the GCP console:
-  ```text
-  https://console.cloud.google.com/storage/browser/${GCS_OUTPUT_BUCKET}?project=${PROJECT_ID}
-  ```
+  Navigate to **Cloud Console > Cloud Storage > `${PROJECT_ID}-watermark-output`** to browse, preview, and download the modified images.
 
 ---
 
