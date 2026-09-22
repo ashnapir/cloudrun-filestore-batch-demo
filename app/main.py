@@ -140,8 +140,14 @@ def process_images():
                 log_event("auto_seed_triggered", task_index=task_index, count=seed_count)
                 seed_sample_images(gcs_input_dir, seed_count)
             else:
-                log_event("wait_for_seed", task_index=task_index, wait_seconds=6)
-                time.sleep(6)
+                log_event("wait_for_seed", task_index=task_index, timeout_seconds=30)
+                for _ in range(15):
+                    time.sleep(2)
+                    test_files = []
+                    for ext in supported_exts:
+                        test_files.extend(glob.glob(os.path.join(gcs_input_dir, ext)))
+                    if len(test_files) >= seed_count:
+                        break
 
             all_files = []
             for ext in supported_exts:
