@@ -304,17 +304,7 @@ gcloud run jobs deploy image-watermark-job \
     --add-volume-mount=volume=nfs-scratch,mount-path=/mnt/nfs/scratch
 ```
 
-### Step 6: Execute Parallel Job
-
-```bash
-gcloud run jobs execute image-watermark-job \
-    --region="${REGION}" \
-    --project="${PROJECT_ID}"
-```
-
-### Step 7: Monitor Progress, Verify Completion & View Modified Images
-
-Once the job is triggered, follow these steps to track execution progress, verify completion, and inspect the resulting watermarked images:
+### Step 6: Execute Parallel Job & Monitor Progress
 
 #### 1. Track Progress & Check Completion Status
 
@@ -328,7 +318,7 @@ Once the job is triggered, follow these steps to track execution progress, verif
   ```
 
 * **Option B: Monitor an asynchronous execution:**
-  If you executed without `--wait`, check the execution status:
+  If you executed without `--wait` (`gcloud run jobs execute image-watermark-job --region="${REGION}" --project="${PROJECT_ID}"`), check the execution status:
   ```bash
   # List recent executions to get the execution ID
   gcloud run jobs executions list \
@@ -349,38 +339,13 @@ Once the job is triggered, follow these steps to track execution progress, verif
   https://console.cloud.google.com/run/jobs/details/${REGION}/image-watermark-job/executions?project=${PROJECT_ID}
   ```
 
-#### 2. Follow Pipeline Events in Cloud Logging
-
-Each container task streams structured JSON log entries detailing the latency of each phase (GCS FUSE fetch, Filestore NFS scratch processing, and GCS FUSE archival):
-
-```bash
-gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="image-watermark-job" AND jsonPayload.event="image_processed"' \
-    --project="${PROJECT_ID}" \
-    --limit=30 \
-    --format="table(timestamp,jsonPayload.task_index,jsonPayload.image,jsonPayload.fetch_from_gcs_ms,jsonPayload.filestore_scratch_proc_ms,jsonPayload.archive_to_gcs_ms,jsonPayload.total_duration_ms)"
-```
-
-#### 3. Verify Output Bucket & Inspect Modified Images
+#### 2. Verify Output Bucket & Inspect Modified Images
 
 Once all tasks reach completion, the watermarked JPEG images are available in `gs://${GCS_OUTPUT_BUCKET}/`.
-
-* **Count processed images (should match total input, e.g. 30):**
-  ```bash
-  gcloud storage ls "gs://${GCS_OUTPUT_BUCKET}/" | wc -l
-  ```
 
 * **List output image details and sizes:**
   ```bash
   gcloud storage ls --long "gs://${GCS_OUTPUT_BUCKET}/"
-  ```
-
-* **Download and inspect a sample watermarked image locally:**
-  ```bash
-  # Download sample_001.jpg
-  gcloud storage cp "gs://${GCS_OUTPUT_BUCKET}/sample_001.jpg" ./sample_001_watermarked.jpg
-
-  # Open with your local image viewer (Linux: xdg-open, macOS: open)
-  xdg-open ./sample_001_watermarked.jpg 2>/dev/null || open ./sample_001_watermarked.jpg 2>/dev/null
   ```
 
 * **View in Cloud Storage Console:**
