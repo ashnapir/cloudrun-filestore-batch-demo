@@ -166,7 +166,7 @@ gcloud config set project "$PROJECT_ID"
 Clone this repository, configure your environment variables (especially `VPC_NETWORK` and `VPC_SUBNET` if not using `default`), and run the provisioning script:
 
 ```bash
-git clone <https://github.com/ashnapir/cloudrun-filestore-batch-demo/tree/main>
+git clone https://github.com/ashnapir/cloudrun-filestore-batch-demo.git
 cd cloudrun-filestore-batch-demo
 chmod +x setup.sh cleanup.sh
 
