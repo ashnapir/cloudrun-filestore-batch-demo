@@ -308,7 +308,7 @@ gcloud run jobs deploy image-watermark-job \
 
 #### 1. Track Progress & Check Completion Status
 
-* **Option A: Stream live execution progress in the terminal (Blocking):**
+* **Stream live execution progress in the terminal (Blocking):**
   You can run the job with the `--wait` flag to stream real-time task progress and wait until all tasks complete:
   ```bash
   gcloud run jobs execute image-watermark-job \
@@ -317,23 +317,7 @@ gcloud run jobs deploy image-watermark-job \
       --wait
   ```
 
-* **Option B: Monitor an asynchronous execution:**
-  If you executed without `--wait` (`gcloud run jobs execute image-watermark-job --region="${REGION}" --project="${PROJECT_ID}"`), check the execution status:
-  ```bash
-  # List recent executions to get the execution ID
-  gcloud run jobs executions list \
-      --job=image-watermark-job \
-      --region="${REGION}" \
-      --project="${PROJECT_ID}"
-
-  # Describe execution to view task progress (e.g. 10 / 10 completed)
-  gcloud run jobs executions describe <EXECUTION_NAME> \
-      --region="${REGION}" \
-      --project="${PROJECT_ID}"
-  ```
-  > Look for: `✔ 10 tasks completed successfully` and `✔ Execution completed successfully`.
-
-* **Option C: Track in Cloud Console:**
+* **Track in Cloud Console:**
   Navigate to **Cloud Console > Cloud Run > Jobs > Executions** (select `image-watermark-job`) to view the execution graph and individual task runtimes.
 
 #### 2. Verify Output Bucket & Inspect Modified Images
