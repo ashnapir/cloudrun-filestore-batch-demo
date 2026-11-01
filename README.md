@@ -334,18 +334,6 @@ Once all tasks reach completion, the watermarked JPEG images are available in `g
 
 ---
 
-## Presentation & Screenshot Walkthrough Guide
-
-| # | Moment to Capture | Location | Key Visual Indicator |
-|---|---|---|---|
-| **1** | **Filestore Dashboard** | Cloud Console > Filestore > Instances | Show internal IP (`10.x.x.x`) and share (`/share1`) mounted as scratch space. |
-| **2** | **Multi-Volume Mounts UI** | Cloud Console > Cloud Run > Jobs > `image-watermark-job` > Configuration | Volumes tab showing **3 volumes**: GCS Input (`/mnt/gcs/input`), GCS Output (`/mnt/gcs/output`), and NFS Scratch (`/mnt/nfs/scratch`). |
-| **3** | **Parallel Execution Graph** | Cloud Console > Cloud Run > Jobs > Executions | 10 tasks running concurrently in parallel. |
-| **4** | **Structured Cloud Logging** | Cloud Console > Logging > Log Explorer | Query JSON metrics demonstrating fetch, Filestore scratch processing, and GCS archival per task. |
-| **5** | **Output Archival Validation** | Cloud Console > Cloud Storage > `${PROJECT_ID}-watermark-output` | Verify watermarked JPEG outputs preserved permanently in GCS. |
-
----
-
 ## Clean Up
 
 To tear down all resources and avoid incurring charges:
